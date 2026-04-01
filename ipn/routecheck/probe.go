@@ -55,6 +55,12 @@ func (c *Client) probe(ctx context.Context, nodes iter.Seq[probed], limit int, t
 	var mu syncs.Mutex
 	r := &Report{}
 
+	timestampProbe := func(n probed) {
+		mu.Lock()
+		defer mu.Unlock()
+		mak.Set(&r.LastProbed, n.id, time.Now())
+	}
+
 	// TODO(sfllaw): Since the nodes are sorted by priority,
 	// where earlier nodes have high traffic-steering scores,
 	// it should be possible to deprioritize or skip probes
@@ -63,6 +69,15 @@ func (c *Client) probe(ctx context.Context, nodes iter.Seq[probed], limit int, t
 	for n := range nodes {
 		g.Go(func() error {
 			metricPing.Add(1)
+
+			// We record the timestamp of each node’s latest probe
+			// so we can probe in incremental batches
+			// and to limit the rate that any given node is pinged.
+			//
+			// TODO(sfllaw): We currently record the timestamp
+			// but haven’t implemented batching or rate-limiting yet.
+			defer timestampProbe(n)
+
 			// TODO(sfllaw): Why did we choose Disco ping instead of TSMP ping?
 			// After all, a TSMP ping proves that the peer Tailscale node is there
 			// and that both nodes know each other’s WireGuard keys,
