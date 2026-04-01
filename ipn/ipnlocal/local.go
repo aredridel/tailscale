@@ -6587,7 +6587,8 @@ func (b *LocalBackend) setNetMapLocked(nm *netmap.NetworkMap) {
 		}()
 	}
 
-	oldSelf := b.currentNode().NetMap().SelfNodeOrZero()
+	oldNetMap := b.currentNode().NetMap()
+	oldSelf := oldNetMap.SelfNodeOrZero()
 
 	b.dialer.SetNetMap(nm)
 	if ns, ok := b.sys.Netstack.GetOK(); ok {
@@ -6664,6 +6665,12 @@ func (b *LocalBackend) setNetMapLocked(nm *netmap.NetworkMap) {
 			ns.UpdateActiveVIPServices(b.pm.CurrentPrefs().AdvertiseServices())
 		}
 
+	}
+
+	if oldNetMap != nm && (oldNetMap == nil || nm == nil) {
+		for _, f := range b.extHost.Hooks().OnNetMapToggle {
+			f(nm)
+		}
 	}
 
 	if !oldSelf.Equal(nm.SelfNodeOrZero()) {

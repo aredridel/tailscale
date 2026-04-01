@@ -146,6 +146,7 @@ func (nb *nodeBackend) Context() context.Context {
 	return nb.ctx
 }
 
+// Self returns the current node.
 func (nb *nodeBackend) Self() tailcfg.NodeView {
 	nb.mu.Lock()
 	defer nb.mu.Unlock()
