@@ -223,6 +223,15 @@ type Wrapper struct {
 	eventClient              *eventbus.Client
 	discoKeyAdvertisementPub *eventbus.Publisher[events.DiscoKeyAdvertisement]
 
+	// connRejectNote is the storage for the optional callback invoked
+	// when this Wrapper emits a TSMP reject. It is typed
+	// [atomic.Value] (rather than a typed atomic.Pointer) so that the
+	// tailscale.com/net/connreject package is not referenced in builds
+	// with -tags ts_omit_connreject. The connreject feature, when
+	// built in, installs and reads it via build-tagged files in this
+	// package; see connreject.go.
+	connRejectNote atomic.Value // holds func(connreject.Event)
+
 	// tunDevStatsCloser closes TUN device stats polling. It may be nil if
 	// [HookPollTUNDevStats] is unset, or the hook func returned an error.
 	tunDevStatsCloser io.Closer
@@ -1238,6 +1247,8 @@ func (t *Wrapper) filterPacketInboundFromWireGuard(p *packet.Parsed, captHook pa
 			t.InjectOutbound(pkt)
 
 			// TODO(bradfitz): also send a TCP RST, after the TSMP message.
+
+			t.notifyConnRejectTSMPSent(rj)
 		}
 
 		return filter.Drop, gro

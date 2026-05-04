@@ -76,6 +76,16 @@ type userspaceEngine struct {
 	eventBus    *eventbus.Bus
 	eventClient *eventbus.Client
 
+	// connRejectNote is the storage for the optional callback invoked
+	// when the engine observes an outbound-direction rejection (an
+	// inbound TSMP reject from a peer or a pendopen timeout). It is
+	// typed [atomic.Value] (rather than a typed atomic.Pointer) so
+	// that the tailscale.com/net/connreject package is not referenced
+	// in builds with -tags ts_omit_connreject. The connreject feature,
+	// when built in, installs and reads it via build-tagged files in
+	// this package; see connreject.go.
+	connRejectNote atomic.Value // holds func(connreject.Event)
+
 	linkChangeQueue execqueue.ExecQueue
 
 	logf           logger.Logf

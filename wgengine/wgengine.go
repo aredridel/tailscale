@@ -141,4 +141,13 @@ type Engine interface {
 	// SetPeerByIPPacketFunc installs a callback used by wireguard-go to
 	// look up which peer should handle an outbound packet by destination IP.
 	SetPeerByIPPacketFunc(func(netip.Addr) (_ key.NodePublic, ok bool))
+
+	// SetConnRejectNote (only implemented when the connreject feature
+	// is built in) is part of an optional interface that the
+	// tailscale.com/feature/connreject extension type-asserts on. It is
+	// intentionally not in this interface to keep the
+	// tailscale.com/net/connreject dependency out of min builds; see
+	// the structural-interface assertion in feature/connreject for the
+	// caller. Other implementers (watchdogEngine, mockEngine) gain the
+	// method via build-tagged files so the feature wiring still works.
 }
