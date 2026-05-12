@@ -802,6 +802,7 @@ runLoop:
 						stateSecret:  cfg.KubeSecret,
 						netmapChan:   egressSvcsNotify,
 						podIPv4:      cfg.PodIPv4,
+						podIPv6:      cfg.PodIPv6,
 						tailnetAddrs: addrs,
 					}
 					go func() {

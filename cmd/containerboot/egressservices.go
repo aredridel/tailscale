@@ -57,7 +57,8 @@ type egressProxy struct {
 
 	netmapChan chan *netmap.NetworkMap // chan to receive netmap updates on
 
-	podIPv4 string // never empty string, currently only IPv4 is supported
+	podIPv4 string // empty if Pod does not have IPv4 address
+	podIPv6 string // empty if Pod does not have IPv6 address
 
 	// tailnetFQDNs is the egress service FQDN to tailnet IP mappings that
 	// were last used to configure firewall rules for this proxy.
@@ -138,6 +139,7 @@ type egressProxyRunOpts struct {
 	stateSecret  string
 	netmapChan   chan *netmap.NetworkMap
 	podIPv4      string
+	podIPv6      string
 	tailnetAddrs []netip.Prefix
 }
 
@@ -150,6 +152,7 @@ func (ep *egressProxy) configure(opts egressProxyRunOpts) {
 	ep.stateSecret = opts.stateSecret
 	ep.netmapChan = opts.netmapChan
 	ep.podIPv4 = opts.podIPv4
+	ep.podIPv6 = opts.podIPv6
 	ep.tailnetAddrs = opts.tailnetAddrs
 	ep.client = &http.Client{} // default HTTP client
 	sleepDuration := time.Second
@@ -416,7 +419,7 @@ func (ep *egressProxy) getStatus(ctx context.Context) (*egressservices.Status, e
 	if err := json.Unmarshal([]byte(raw), status); err != nil {
 		return nil, fmt.Errorf("error unmarshalling previous config: %w", err)
 	}
-	if reflect.DeepEqual(status.PodIPv4, ep.podIPv4) {
+	if (status.PodIPv4 == ep.podIPv4 || ep.podIPv4 == "") && (status.PodIPv6 == ep.podIPv6 || ep.podIPv6 == "") {
 		return status, nil
 	}
 	return nil, nil
@@ -430,6 +433,7 @@ func (ep *egressProxy) setStatus(ctx context.Context, status *egressservices.Sta
 		status = &egressservices.Status{}
 	}
 	status.PodIPv4 = ep.podIPv4
+	status.PodIPv6 = ep.podIPv6
 	secret, err := ep.kc.GetSecret(ctx, ep.stateSecret)
 	if err != nil {
 		return fmt.Errorf("error retrieving state Secret: %w", err)
@@ -620,6 +624,8 @@ func servicesStatusIsEqual(st, st1 *egressservices.Status) bool {
 	}
 	st.PodIPv4 = ""
 	st1.PodIPv4 = ""
+	st.PodIPv6 = ""
+	st1.PodIPv6 = ""
 	return reflect.DeepEqual(*st, *st1)
 }
 
