@@ -181,6 +181,57 @@ func TestBuildError(t *testing.T) {
 	}
 }
 
+// TestRaceAttributedToPassingTest verifies that when go test attributes
+// output (e.g. a data race report) to a test that ends up passing but
+// the package as a whole fails, testwrapper still prints that output.
+// Without the fix, the per-test log buffer was discarded for passing
+// tests, so the race report would be invisible — the user would see
+// only a bare "FAIL\nFAIL\tpkg\ttime" with no failure context.
+// See https://github.com/tailscale/tailscale/issues/19603.
+func TestRaceAttributedToPassingTest(t *testing.T) {
+	t.Parallel()
+
+	testfile := filepath.Join(t.TempDir(), "race_test.go")
+	code := []byte(`package race_test
+
+import (
+	"sync"
+	"testing"
+)
+
+var counter int
+var wg sync.WaitGroup
+
+func TestSpawn(t *testing.T) {
+	wg.Add(2)
+	go func() { defer wg.Done(); counter++ }()
+	go func() { defer wg.Done(); counter++ }()
+}
+
+func TestWait(t *testing.T) {
+	// Block until the racy goroutines spawned by TestSpawn finish.
+	// go test attributes the race report to whichever test is current,
+	// which is TestWait, but TestWait itself does not fail.
+	wg.Wait()
+}
+`)
+	if err := os.WriteFile(testfile, code, 0o644); err != nil {
+		t.Fatalf("writing package: %s", err)
+	}
+
+	out, err := cmdTestwrapper(t, testfile, "-race").CombinedOutput()
+	if code, ok := errExitCode(err); !ok || code != 1 {
+		t.Fatalf("testwrapper %s -race: expected exit code 1 but got: %v; output was:\n%s", testfile, err, out)
+	}
+	if want := "WARNING: DATA RACE"; !bytes.Contains(out, []byte(want)) {
+		t.Fatalf("testwrapper %s -race: expected race report in output but got:\n%s", testfile, out)
+	}
+
+	if testing.Verbose() {
+		t.Logf("success - output:\n%s", out)
+	}
+}
+
 func TestTimeout(t *testing.T) {
 	t.Parallel()
 

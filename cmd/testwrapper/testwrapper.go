@@ -142,6 +142,24 @@ func runTests(ctx context.Context, attempt int, pt *packageTests, goTestArgs, te
 			case "build-output":
 				pkgTests[""].logs.WriteString(goOutput.Output)
 			case "build-fail", "fail", "pass", "skip":
+				// anyRealFailure tracks whether the package contains a
+				// test that go test attributed the failure to. If the
+				// package failed but no test did, output that the main
+				// loop would normally drop (because it only flushes
+				// logs from failed tests) needs to be folded into the
+				// package-level logs so the user can see why. This
+				// matters for races: test2json attributes some output
+				// (e.g. race reports from goroutines that outlive a
+				// test) to the most recent test even after that test
+				// has reported PASS.
+				// See https://github.com/tailscale/tailscale/issues/19603.
+				var anyRealFailure bool
+				for _, test := range pkgTests {
+					if test.testName != "" && test.outcome == "fail" {
+						anyRealFailure = true
+						break
+					}
+				}
 				for _, test := range pkgTests {
 					if test.testName != "" && test.outcome == "" {
 						test.outcome = "fail"
@@ -153,6 +171,20 @@ func runTests(ctx context.Context, attempt int, pt *packageTests, goTestArgs, te
 					outcome = "fail"
 				}
 				pkgTests[""].logs.WriteString(goOutput.Output)
+				if outcome == "fail" && !anyRealFailure {
+					var passing []*testAttempt
+					for _, t := range pkgTests {
+						if t.testName != "" && t.outcome != "fail" && t.logs.Len() > 0 {
+							passing = append(passing, t)
+						}
+					}
+					slices.SortFunc(passing, func(a, b *testAttempt) int {
+						return a.start.Compare(b.start)
+					})
+					for _, t := range passing {
+						pkgTests[""].logs.Write(t.logs.Bytes())
+					}
+				}
 				ch <- &testAttempt{
 					pkg:         goOutput.Package,
 					outcome:     outcome,
