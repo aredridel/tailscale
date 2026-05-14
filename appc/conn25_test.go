@@ -35,16 +35,22 @@ func TestAppDNSRoutes(t *testing.T) {
 	appFourBytes := getBytesForAttr("app4", []string{"woo.b.example.com", "c.example.com"}, []string{"tag:four1", "tag:four2"})
 	appFiveBytes := getBytesForAttr("app5", []string{"*.example.com", "example.com"}, []string{"tag:one"})
 	appSixBytes := getBytesForAttr("app6", []string{"*.Example.com", "EXAMPLE.com", "EXAMPLE.COM"}, []string{"tag:one"})
+	appSevenBytes := getBytesForAttr("app7", []string{"a.com"}, []string{"tag:seven"})
+	appEightBytes := getBytesForAttr("app8", []string{"a.com"}, []string{"tag:eight1", "tag:eight2"})
+	appNineBytes := getBytesForAttr("app9", []string{"b.com", "a.com"}, []string{"tag:nine"})
+	appTenBytes := getBytesForAttr("app10", []string{"c.com"}, []string{"tag:one"})
 
 	resolver := func(appName string) []*dnstype.Resolver {
 		return []*dnstype.Resolver{{Addr: fmt.Sprintf("%s:%s", DNSAddrScheme, appName)}}
 	}
 
 	for _, tt := range []struct {
-		name   string
-		hasCap bool
-		config []tailcfg.RawMessage
-		want   map[string][]*dnstype.Resolver
+		name                   string
+		hasCap                 bool
+		config                 []tailcfg.RawMessage
+		advertiseConnectorPref bool
+		selfTags               []string
+		want                   map[string][]*dnstype.Resolver
 	}{
 		{
 			name:   "no-capability", // hasCap false should return nil regardless of config.
@@ -134,9 +140,48 @@ func TestAppDNSRoutes(t *testing.T) {
 				"example.com":   resolver("app5"),
 			},
 		},
+		{
+			name:                   "self-connector-excludes-self-domains",
+			hasCap:                 true,
+			advertiseConnectorPref: true,
+			selfTags:               []string{"tag:eight1"},
+			config: []tailcfg.RawMessage{
+				tailcfg.RawMessage(appSevenBytes),
+				tailcfg.RawMessage(appEightBytes),
+				tailcfg.RawMessage(appNineBytes),
+				tailcfg.RawMessage(appTenBytes),
+			},
+			// tag:eight1 makes us a connector for app8, which has domain a.com
+			// we should not return routes for a.com.
+			want: map[string][]*dnstype.Resolver{
+				"b.com": resolver("app9"),
+				"c.com": resolver("app10"),
+			},
+		},
+		{
+			name:                   "self-tagged-but-not-connector",
+			hasCap:                 true,
+			advertiseConnectorPref: false,
+			selfTags:               []string{"tag:eight1"},
+			config: []tailcfg.RawMessage{
+				tailcfg.RawMessage(appSevenBytes),
+				tailcfg.RawMessage(appEightBytes),
+				tailcfg.RawMessage(appNineBytes),
+				tailcfg.RawMessage(appTenBytes),
+			},
+			// we're not actually a connector this time (even though we have the tag)
+			// so route a.com
+			want: map[string][]*dnstype.Resolver{
+				"a.com": resolver("app9"), // last write wins, so not app7 or app8
+				"b.com": resolver("app9"),
+				"c.com": resolver("app10"),
+			},
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			selfNode := &tailcfg.Node{}
+			selfNode := &tailcfg.Node{
+				Tags: tt.selfTags,
+			}
 			if tt.config != nil {
 				selfNode.CapMap = tailcfg.NodeCapMap{
 					tailcfg.NodeCapability(AppConnectorsExperimentalAttrName): tt.config,
@@ -145,7 +190,7 @@ func TestAppDNSRoutes(t *testing.T) {
 			selfView := selfNode.View()
 			got := AppDNSRoutes(func(_ tailcfg.NodeCapability) bool {
 				return tt.hasCap
-			}, selfView)
+			}, selfView, tt.advertiseConnectorPref)
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Fatalf("AppDNSRoutes (-want, +got):\n%s", diff)
 			}

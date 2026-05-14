@@ -916,7 +916,7 @@ func dnsConfigForNetmap(nm *netmap.NetworkMap, peers map[tailcfg.NodeID]tailcfg.
 
 	if buildfeatures.HasConn25 {
 		// Add split DNS routes for conn25
-		if appRoutes := appc.AppDNSRoutes(nm.HasCap, nm.SelfNode); appRoutes != nil {
+		if appRoutes := appc.AppDNSRoutes(nm.HasCap, nm.SelfNode, prefs.AppConnector().Advertise); appRoutes != nil {
 			addSplitDNSRoutes(appRoutes)
 		}
 	}
