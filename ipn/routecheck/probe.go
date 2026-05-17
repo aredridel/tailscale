@@ -223,17 +223,8 @@ func (c *Client) ProbeAllHARouters(ctx context.Context, limit int, timeout time.
 	// Each node should probe starting with the highest scoring node.
 	// We use rendezvous hashing to break ties in a consistent manner
 	// while still preventing swarming.
-	rdvHash := traffic.MakeRendezvousHasher(nm.SelfNode.ID())
-	ss := traffic.ScorePeers(nodes)
-	slices.SortFunc(nodes, func(a, b tailcfg.NodeView) int {
-		c := cmp.Compare(ss.Score(b), ss.Score(a)) // Highest score first.
-		if c == 0 {
-			// Rendezvous hashing for reliably picking the
-			// same node from a list: tailscale/tailscale#16551.
-			return cmp.Compare(rdvHash(b.ID()), rdvHash(a.ID()))
-		}
-		return c
-	})
+	ss := traffic.ScoresFor(nm.SelfNode.ID(), nodes)
+	ss.SortNodes(nodes)
 
 	return c.Probe(ctx, slices.Values(nodes), limit, timeout)
 }
