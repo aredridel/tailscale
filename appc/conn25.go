@@ -80,26 +80,27 @@ func AppDNSRoutes(hasCap func(c tailcfg.NodeCapability) bool, self tailcfg.NodeV
 	// dns queries for the domains, and any subdomains.
 	//
 	// If we are a connector for a domain, we want the OS to handle the dns query,
-	// so we want to avoid returning routes for any domain or subdomain of any of
+	// so we want to avoid returning routes for any domain or ancestor domain of any of
 	// the domains we are a connector for.
 	//
 	// ie if we are a connector for b.example.com, we want to avoid routes for
-	// a.b.example.com and b.example.com but example.com is ok.
+	// example.com and b.example.com but a.b.example.com is ok.
 	var selfRoutedDomains []dnsname.FQDN
 	isSelfRouted := func(d dnsname.FQDN) bool {
 		for _, existing := range selfRoutedDomains {
-			if existing.Contains(d) {
+			if d.Contains(existing) {
 				return true
 			}
 		}
 		return false
 	}
 	if advertiseConnectorPref {
+		// Populate selfRoutedDomains.
 		selfTags := set.SetOf(self.Tags().AsSlice())
 		for _, app := range apps {
 			for _, tag := range app.Connectors {
 				if selfTags.Contains(tag) {
-					// it's a me, I'm the connector
+					// This node connects for this app.
 					for _, domain := range app.Domains {
 						if d, err := toDomain(domain); err == nil {
 							selfRoutedDomains = append(selfRoutedDomains, d)
